@@ -1,7 +1,7 @@
 bundle agent yum_inventory
 {
   meta:
-    enable_yum_inventory_autorun._stdlib_path_exists_yum::
+    enable_yum_inventory_autorun::
       "tags" slist => { "autorun" };
 
   vars:
