@@ -1,0 +1,21 @@
+bundle common yum_def_file_control
+{
+  vars:
+    "input[yum_inventory]"
+      string => "$(this.promise_dirname)/policy/yum_inventory.cf";
+
+    "input[yum_inventory_yum_info_yum]"
+      string => "$(this.promise_dirname)/policy/yum_inventory_yum_info_yum.cf";
+
+    "input[yum_inventory_yum_repolist]"
+      string => "$(this.promise_dirname)/policy/yum_inventory_yum_repolist.cf";
+
+    any::
+      "inputs" slist => getvalues(input);
+      "bundles" slist => getindices(input);
+}
+
+body file control
+{
+  inputs => { @(yum_def_file_control.inputs) };
+}
