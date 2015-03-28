@@ -91,10 +91,12 @@ Ensure the policy is activated
 #+end_src
 
 #+caption: Mission Portal Invetory Report Additional Attributes
-[[../images/2015-01-30-Selection_001.jpg]]
+[[images/2015-01-30-Selection_001.jpg]]
+
 #+caption: Mission Portal Inventory Report Yum Plugins Loaded & Enabled Repositories
-[[../images/2015-01-30-Selection_002.jpg]]
-[[../images/2015-01-30-Selection_003.jpg]]
+[[images/2015-01-30-Selection_002.jpg]]
+
+[[images/2015-01-30-Selection_003.jpg]]
 
 *** yum_inventory_yum_info_yum
 Inventory interesting information about yum. Currently this includes
