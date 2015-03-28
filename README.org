@@ -23,9 +23,12 @@ Enabled by setting the class `enable_yum_repos_d`
   bundle agent example_usage
   {
     methods:
+
       production::
+        "converge_data" usebundle => yum_repos_d_data_bundle_pure_policy_example;
         "repos" usebundle => yum_repos_d("purge", "yum_repos_d_data_bundle_pure_policy_example");
       development::
+        "converge_data" usebundle => yum_repos_d_data_bundle_readjson_example;
         "repos" usebundle => yum_repos_d("keep", " yum_repos_d_data_bundle_readjson_example");
   }
   
