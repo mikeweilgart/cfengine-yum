@@ -1,53 +1,96 @@
 * yum
-** How to integrate into your policy
-First get the policy into your masterfiles
+** yum_repos_d
+Manage yum repository client configuration files residing in
+`/etc/yum.repos.d/*.repo`.
 
-#+beign_src sh
-  export MASTERFILES=/home/nickanderson/CFEngine/masterfiles
-  git clone https://github.com/nickanderson/yum.git
-  cd yum
-  mkdir -p $MASTERFILES/services/yum
-  git archive master | tar -x -C $MASTERFILES/services/yum
-#+end_src
+This bundle looks in data_interface_bundle for a variable named
+'data'. This variable needs to be either a datacontainer or a classic
+cfengine array. It expects to find a key named for itself
+'yum_repos_d'and under that key a key for each repository to be
+configured. This allows for very flexible data construction, and other
+keys will be ignored. This bunlde will reconstruct the data under its
+key locally into a classic array. This is done to support expansion of
+cfengine variables within a data container.
 
-Include def.cf into your inputs
+- @param extra_repo_files_state Defines weather to keep or purge
+  unspecified repo files. (purge|keep) Defaults to keep.
+- @param data_interface_bundle The bundle in which to look for 'data'
+
+Enabled by setting the class `enable_yum_repos_d`
+
+*** Example Usage
 #+begin_src cfengine
-  body common control
+  bundle agent example_usage
   {
-        inputs => { 
-                    # Reports
-                    @(cfengine_reports.inputs),
+    methods:
+      production::
+        "repos" usebundle => yum_repos_d("purge", "yum_repos_d_data_bundle_pure_policy_example");
+      development::
+        "repos" usebundle => yum_repos_d("keep", " yum_repos_d_data_bundle_readjson_example");
+  }
   
-                    # If you want to activate this policy from autorun,
-                    # then it needs to be included before autorun
-                    # inptus.
-                    "services/CVE_2015_0235/def.cf",
-                    
-                    # autorun system
-                    @(services_autorun.inputs),
-        };
+  # Example data interface bundles
+  bundle agent yum_repos_d_data_bundle_pure_policy_example
+  {
+    vars:
+      "data[yum_repos_d][updates][name]" string => "CentOS Updates";
+      "data[yum_repos_d][updates][baseurl]" string => "http://my.yum/repo";
+      "data[yum_repos_d][updates][enable]" string => "1";
+      "data[yum_repos_d][updates][gpgcheck]" string => "0";
+      "data[yum_repos_d][updates][gpgkey]" string => "http://mirror.cisp.com/CentOS/6/os/i386/RPM-GPG-KEY-CentOS-6";
+      "data[yum_repos_d][updates][proxy]" string => "FUCKIt";
+  }
+  
+  bundle agent yum_repos_d_data_bundle_parsejson_example
+  {
+    vars:
+      "data" data => parsejson('
+  {
+    "yum_repos_d" {
+  
+    "updates": {
+      "name": "CentOS Updates",
+      "baseurl": "http://$(locations.rpm_repo)/repo",
+      "enable": "1",
+      "gpgcheck": "0",
+      "gpgkey": "http://mirror.cisp.com/CentOS/6/os/i386/RPM-GPG-KEY-CentOS-6"
+    }
+  }
+  }');
+  }
+  
+  bundle agent yum_repos_d_data_bundle_readjson_example
+  {
+    vars:
+      "data_file" string => "$(this.promise_diranme)../data/$(this.bundle).json";
+        
+      "data" data => readjson( $(data_file), 1M );
+        
+    classes:
+      "data_file_exists" expression => fileexists( $(data_file) );
   }
 #+end_src
 
-Ensure the features you want are enabled, and that the policy will be activated.
+** yum_inventory
+Inventory information about yum
 
-#+begin_src cfengine
-  classes:
-    "enable_yum_inventory_autorun" expression => "services_autorun";
-    "enable_yum_inventory_all" expression => "any";
-#+end_src
+All inventory information is cached. If you would like to invalidate the cache you may do so using the following classes:
+
+- yum_info_yum_cache_invalid
+- yum_repolist_disabled_cache_invalid
+- yum_repollist_enabled_cache_invalid
+
+Enabled by setting the class `enable_yum_inventory`
 
 Ensure the policy is activated
 
-In the example above I enabled the policy activation with autorun, but it can be activated manually as well.
-
 #+begin_src cfengine
   methods:
-    redhat|centos::
+    !redhat_4.(redhat|centos)::
       "yum" usebundle => yum_inventory;
 #+end_src
 
-** yum_inventory_yum_info_yum
+*** yum_inventory_yum_info_yum
 Inventory interesting information about yum. Currently this includes
 the yum plugins (if any) which are loaded.
 
@@ -56,10 +99,7 @@ CFEngine Enteprise Mission Portals Inventory interface. Classes are
 defined for each loaded plugin in the form
 `yum_plugin_<plugin_name>_loaded`.
 
-Enabled by setting the class `enable_yum_inventory_yum_info_yum` or
-`enable_yum_inventory_all`.
-
-** yum_inventory_yum_repolist
+*** yum_inventory_yum_repolist
 Inventory interesting information about the yum repositories configured.
 
 Variables for each enabled and disabled repository are defined and
@@ -67,5 +107,49 @@ tagged for use in CFEngine Enterprise Mission Poratls Inventory
 interface. Classes are defined for each configured repo in the form
 `yum_repo_<repo_id>_enabled` or `yum_repo_<repo_id>_disabled`.
 
-Enabled by setting the class `enable_yum_inventory_yum_repolist` or
-`enable_yum_inventory_all`.
+** How to integrate into your policy
+First get the policy into your masterfiles
+
+#+beign_src sh
+  cd /tmp
+  export MASTERFILES=/home/nickanderson/CFEngine/masterfiles
+  git clone https://github.com/nickanderson/yum.git
+  cd yum
+  mkdir -p $MASTERFILES/services/yum
+  git archive master | tar -x -C $MASTERFILES/services/yum
+#+end_src
+
+Include def.cf into your inputs
+
+#+begin_src cfengine
+  body common control
+  {
+        inputs => { 
+                    # Reports
+                    @(cfengine_reports.inputs),
+  
+                   "services/yum/def.cf",
+                    
+                    # autorun system
+                    @(services_autorun.inputs),
+        };
+  }
+#+end_src
+
+Ensure the features you want are enabled, (this should be done in a
+file that is included in inputs BEFORE the yum policy, for example
+def.cf) and that the policy will be activated. Note: if the feature is
+not enabled, it will not be included in inputs, and will be
+unavailable for use.
+
+#+begin_src cfengine
+  classes:
+    "enable_yum_inventory"
+      expression => "any",
+      comment => "Enable yum inventory reporting";
+
+    "enable_yum_repos_d"
+      expression => "any",
+      comment => "Enable policy to manage yum repository client configs
+                  in /etc/yum.repos.d";
+#+end_src

@@ -1,98 +1,30 @@
+bundle agent yum_inventory_file_control
+{
+  vars:
+      "input[yum_inventory_data_cache]"   string => "$(this.promise_dirname)/yum_inventory_data_cache.cf";
+      "input[yum_inventory_yum_info_yum]" string => "$(this.promise_dirname)/yum_inventory_yum_info_yum.cf";
+      "input[yum_inventory_yum_repolist]" string => "$(this.promise_dirname)/yum_inventory_yum_repolist.cf";
+
+      "inputs" slist => getvalues(input);
+}
+
+body file control
+{
+  inputs => { @(yum_inventory_file_control.inputs) };
+}
+
 bundle agent yum_inventory
 {
-  meta:
-    enable_yum_inventory_autorun::
-      "tags" slist => { "autorun" };
-
   vars:
       "state_dir" string => "$(sys.workdir)/state/yum_inventory";
 
-  classes:
-    "enable_yum_inventory" expression => "enable_yum_inventory_autorun";
-
   methods:
-    enable_yum_inventory::
-      "" usebundle => yum_inventory_data_cache;
+      "cache_yum_inventory"
+        usebundle => yum_inventory_data_cache;
 
-    enable_yum_inventory_yum_info_yum|enable_yum_inventory_all::
-      "" usebundle => yum_inventory_yum_info_yum;
+      "inventory_yum_info"
+        usebundle => yum_inventory_yum_info_yum;
 
-    enable_yum_inventory_yum_repolist|enable_yum_inventory_all::
-      "" usebundle => yum_inventory_yum_repolist;
+      "inventory_yum_repolist"
+        usebundle => yum_inventory_yum_repolist;
 }
-
-bundle agent yum_inventory_data_cache
-{
-  meta:
-
-    "description" string => "Cache yum information for inventory. All yum
-                             inventory bundles should use caching. As yum
-                             is kind of intense on the disk IO.";
-
-  vars:
-    "state_dir" string => "$(yum_inventory.state_dir)";
-    "yum_info_state_file" string => "$(state_dir)/yum_info_yum.txt";
-    "yum_repolist_disabled_state_file" string => "$(state_dir)/yum_repolist_disabled.txt";
-    "yum_repolist_enabled_state_file" string => "$(state_dir)/yum_repolist_enabled.txt";
-
-    # Maybe instead of a list, we just select all files in the directory.
-    "cache_files" slist => { 
-                             "$(yum_info_state_file)",
-                             "$(yum_repolist_disabled_state_file)",
-                             "$(yum_repolist_enabled_state_file)",
-                            };
-
-    "max_cache_hours" int => "24";
-
-  classes:
-    "yum_info_yum_cache_needs_populated"
-       not => fileexists( $(yum_info_state_file) );
-
-    "yum_repolist_disabled_cache_needs_populated"
-       not => fileexists( $(yum_repolist_disabled_state_file) );
-
-    "yum_repolist_enabled_cache_needs_populated"
-       not => fileexists( $(yum_repolist_enabled_state_file) );
-
-  files:
-      "$(yum_inventory.state_dir)/."
-        create => "true",
-        comment => "We need a place to store our state for processing";
-
-      # It would be nice to be able to promise a files content be the result of a command output
-      # "$(yum_info_state_file)"
-      #   transformer => "$(paths.yum) info yum > "
-
-      # We don't want the data to be too stale, so we purge cached files if they are old.
-      "$(state_dir)/."
-        delete => tidy,
-        depth_search => recurse("inf"),
-        file_select => hours_old($(max_cache_hours));
-        
-
-  commands:
-    yum_info_yum_cache_needs_populated::
-      # This feels hacky, is there a way I can use a body to specify the
-      # commands stdout and stderr
-      "$(paths.yum)"
-        args => "info yum > $(yum_info_state_file)",
-        contain => in_shell;
-
-    yum_repolist_disabled_cache_needs_populated::
-      "$(paths.yum)"
-        args => "repolist disabled > $(yum_repolist_disabled_state_file)",
-        contain => in_shell;
-
-    yum_repolist_enabled_cache_needs_populated::
-      "$(paths.yum)"
-        args => "repolist enabled > $(yum_repolist_enabled_state_file)",
-        contain => in_shell;
-}
-body file_select hours_old(hours)
-# @brief Select files that have not been modified for at least `hours`
-# @param hours Number of hours
-{
-      mtime       => irange(0,ago(0, 0, 0, $(hours), 0, 0));
-      file_result => "mtime";
-}
-
