@@ -13,12 +13,17 @@ bundle agent example_usage
 bundle agent yum_repos_d_data_bundle_pure_policy_example
 {
   vars:
-    "data[yum_repos_d][updates][name]" string => "CentOS Updates";
-    "data[yum_repos_d][updates][baseurl]" string => "http://my.yum/repo";
-    "data[yum_repos_d][updates][enable]" string => "1";
-    "data[yum_repos_d][updates][gpgcheck]" string => "0";
-    "data[yum_repos_d][updates][gpgkey]" string => "http://mirror.cisp.com/CentOS/6/os/i386/RPM-GPG-KEY-CentOS-6";
-    "data[yum_repos_d][updates][proxy]" string => "FUCKIt";
+    redhat_6::
+      "data[yum_repos_d][updates][name]" string => "CentOS Updates";
+      "data[yum_repos_d][updates][enable]" string => "1";
+      "data[yum_repos_d][updates][gpgcheck]" string => "0";
+      "data[yum_repos_d][updates][gpgkey]" string => "http://mirror.cisp.com/CentOS/6/os/i386/RPM-GPG-KEY-CentOS-6";
+      
+    redhat_6.site_datacenter_a::
+      "data[yum_repos_d][updates][baseurl]" string => "http://reposerver32.my.org/repo";
+      
+    redhat_6.site_datacenter_b::
+      "data[yum_repos_d][updates][baseurl]" string => "http://reposerver42.my.org/repo";
 }
 
 bundle agent yum_repos_d_data_bundle_parsejson_example
