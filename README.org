@@ -3,74 +3,132 @@
 Manage yum repository client configuration files residing in
 `/etc/yum.repos.d/*.repo`.
 
-This bundle looks in data_interface_bundle for a variable named
-'data'. This variable needs to be either a datacontainer or a classic
-cfengine array. It expects to find a key named for itself
-'yum_repos_d'and under that key a key for each repository to be
-configured. This allows for very flexible data construction, and other
-keys will be ignored. This bunlde will reconstruct the data under its
-key locally into a classic array. This is done to support expansion of
-cfengine variables within a data container.
-
 - @param extra_repo_files_state Defines weather to keep or purge
   unspecified repo files. (purge|keep) Defaults to keep.
-- @param data_interface_bundle The bundle in which to look for 'data'
+- @param data The data that defines the repositories
 
 Enabled by setting the class `enable_yum_repos_d`
 
 *** Example Usage
 #+begin_src cfengine
-  bundle agent example_usage
+  bundle agent main
   {
     methods:
-
-      production::
-        "converge_data" usebundle => yum_repos_d_data_bundle_pure_policy_example;
-        "repos" usebundle => yum_repos_d("purge", "yum_repos_d_data_bundle_pure_policy_example");
-      development::
-        "converge_data" usebundle => yum_repos_d_data_bundle_readjson_example;
-        "repos" usebundle => yum_repos_d("keep", " yum_repos_d_data_bundle_readjson_example");
+      # It's best practice to converge your data first
+      "yum_repository_definitions" usebundle => yum_repository_definitions;
+  
+      # Note how the data is passed
+      "repos" usebundle => yum_repos_d("purge", @(yum_repository_definitions.data));
   }
   
-  # Example data interface bundles
-  bundle agent yum_repos_d_data_bundle_pure_policy_example
+  bundle agent yum_repository_definitions
+  # @brieg Define yum repository configurations
   {
+  
     vars:
-      "data[yum_repos_d][updates][name]" string => "CentOS Updates";
-      "data[yum_repos_d][updates][baseurl]" string => "http://my.yum/repo";
-      "data[yum_repos_d][updates][enable]" string => "1";
-      "data[yum_repos_d][updates][gpgcheck]" string => "0";
-      "data[yum_repos_d][updates][gpgkey]" string => "http://mirror.cisp.com/CentOS/6/os/i386/RPM-GPG-KEY-CentOS-6";
-      "data[yum_repos_d][updates][proxy]" string => "FUCKIt";
-  }
   
-  bundle agent yum_repos_d_data_bundle_parsejson_example
-  {
-    vars:
-      "data" data => parsejson('
-  {
-    "yum_repos_d" {
+        "os_ver"
+          string => string_head(
+                                execresult("/bin/rpm -q --queryformat '%{RELEASE}' redhat-release-server", "noshell"),
+                                "3"),
+          comment => "return the first three bytes of the OS version number, e.g.
+                      if the redhat-release-server package version is 6.5.0.1,
+                      return '6.5'.  Purpose: so that we can extract the minor
+                      version number, which we assume to be one digit.";
   
-    "updates": {
-      "name": "CentOS Updates",
-      "baseurl": "http://$(locations.rpm_repo)/repo",
-      "enable": "1",
-      "gpgcheck": "0",
-      "gpgkey": "http://mirror.cisp.com/CentOS/6/os/i386/RPM-GPG-KEY-CentOS-6"
-    }
-  }
-  }');
-  }
+        "os_ver_2" string => string_tail("$(os_ver)", 1);
   
-  bundle agent yum_repos_d_data_bundle_readjson_example
-  {
-    vars:
-      "data_file" string => "$(this.promise_diranme)../data/$(this.bundle).json";
-        
-      "data" data => readjson( $(data_file), 1M );
-        
-    classes:
-      "data_file_exists" expression => fileexists( $(data_file) );
+        "kickstart" string => ifelse("lab", "http://lab-kickstart", "http://default-kickstart");
+  
+      redhat_5.!oracle_5::
+        "RHEL5_iso"
+          meta => { "yum_repos_d" },
+          data => parsejson('{
+                    "RHEL5_ISO": {
+                      "id":       { "value": "RHEL5_ISO"},
+                      "name":     { "value": "RHEL5_ISO"},
+                      "baseurl":  { "value": "$(kickstart)/repo/RHEL$(os_ver)_$(sys.arch)"},
+                      "gpgcheck": { "value": "1"},
+                      "gpgkey":   { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                    }
+                  }');
+  
+      redhat_5|oracle_5::
+        "RHEL5_CUSTOM"
+          meta => { "yum_repos_d" },
+          data => parsejson('{
+                    "RHEL5_CUSTOM": {
+                      "id":       { "value": "RHEL5_CUSTOM"},
+                      "name":     { "value": "RHEL5_CUSTOM"},
+                      "baseurl":  { "value": "$(kickstart)/mrepo/rhel5s-$(sys.arch)/RPMS.custom"},
+                      "gpgcheck": { "value": "0"},
+                      "gpgkey":   { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                    }
+                  }');
+  
+      oracle_5::
+        "OEL5_ISO_SRV"
+          meta => { "yum_repos_d" },
+          data => parsejson('{
+                    "OEL5_ISO_SRV": {
+                      "id":       { "value": "OEL5_ISO_SRV"},
+                      "name":     { "value": "OEL5_ISO_SRV"},
+                      "baseurl":  { "value": "$(kickstart)/repo/OEL$(os_ver)_$(sys.arch)/Server"},
+                      "gpgcheck": { "value": "1"},
+                      "gpgkey":   { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                    }
+                  }');
+  
+      redhat_6|oracle_6::
+        "RHEL6_ISO"
+          meta => { "yum_repos_d" },
+          data => parsejson('{
+                    "RHEL6_ISO": {
+                      "id":       { "value": "RHEL6_ISO"},
+                      "name":     { "value": "RHEL6.$(os_ver2)_ISO"},
+                      "baseurl":  { "value": "$(kickstart)/repo/RHEL6.$(os_ver2)_$(sys.arch)"},
+                      "gpgcheck": { "value": "1"},
+                      "gpgkey":   { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                    }
+                  }');
+  
+      lab.redhat_6.!oracle_6::
+        "VMWARE_TOOL_OSP"
+          meta => { "yum_repos_d" },
+          data => parsejson('{
+                    "VMWARE_TOOL_OSP": {
+                      "id":       { "value": "VMWARE_TOOL_OSP"},
+                      "name":     { "value": "VMWARE_TOOL_OSP"},
+                      "baseurl":  { "value": "$(kickstart)/mrepo/vmware-tools-osp/esx5.1u2-6Server-$(sys.arch)"},
+                      "gpgcheck": { "value": "1"},
+                      "gpgkey":   { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                    }
+                  }');
+  
+      # It is important to return to the *any* class restriction so that we
+      # always try to consolidate the defined repos
+      any::
+        # Find all of the repo definitions (variables in this bundle tagged with "yum_repos_d")
+        "repo_defs" slist => variablesmatching("$(this.namespace):$(this.bundle)\..*", "yum_repos_d");
+  
+        # Now we merge them all together into a single data var
+        "data" data => parsejson('[]');
+        "data" data => mergedata(data, $(repo_defs));
+  
+       # These variables are only useful when debugging
+       DEBUG|DEBUG_yum_repository_definitions::
+         "s_data" string => format("%S", data);
+         "repo_ids" slist => getindices(data);
+         "repo_def_count" int => length(repo_ids);
+  
+     reports:
+       DEBUG|DEBUG_yum_repository_definitions::
+         "DEBUG $(this.bundle) YES THIS ONE";
+         "$(const.t) Found '$(repo_def_count)' yum repo client definitions";
+         "$(const.t) Found yum_repos_d client definition for '$(repo_ids)'";
+         "$(const.t) Serialized Data: '$(s_data)'";
+         "$(const.t) OS Version: '$(os_ver)'";
+         "$(const.t) OS Minor Version: '$(os_ver_2)'";
   }
 #+end_src
 

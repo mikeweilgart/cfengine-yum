@@ -1,62 +1,88 @@
-bundle common yum_repos_d_file_control
-{
-  vars:
-    "input[lib]" string => "$(this.promise_dirname)/lib.cf";
-    "inputs" slist => getvalues(input);
-}
-
-body file control
-{
-  inputs => { @(yum_repos_d_file_control.inputs) };
-}
-
-bundle agent yum_repos_d(extra_repo_files_state, data_interface_bundle)
+bundle agent yum_repos_d(extra_repo_files_state, data)
 #@brief Manage yum client configuration in /etc/yum.repos.d
-
-# This bundle looks in data_interface_bundle for a variable named 'data'. This
-# variable needs to be either a datacontainer or a classic cfengine array. It
-# expects to find a key named for itself 'yum_repos_d'and under that key a key
-# for each repository to be configured. This allows for very flexible data
-# construction, and other keys will be ignored. This bunlde will reconstruct
-# the data under its key locally into a classic array. This is done to support
-# expansion of cfengine variables within a data container.
-
 #@param extra_repo_files_state (purge|keep)
-#@param data_interface_bundle The bundle in which to look for 'data'
+#@param data The data to use to manage the yum repository definitions 
+#
+# Example Definition:
+# ```cf3
+# bundle agent example_yum_repos_definition
+# {
+#   vars:
+#       "rhel6_iso"
+#         meta => { "yum_repos_d" },
+#         data => parsejson('{
+#                   "RHEL6_ISO": {
+#                     "id": { "value": "RHEL6_ISO"},
+#                     "name": { "value": "RHEL6.$(os_ver2)_ISO"},
+#                     "baseurl": { "value": "http://myreposerver/repo/RHEL6.$(os_ver2)_$(sys.arch)"},
+#                     "gpgcheck": { "value": "1"},
+#                     "gpgkey": { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+#                   }
+#                 }');
+#
+#       # Find all of the repo definitions (variables in this bundle tagged with "yum_repos_d")
+#       "repo_defs" slist => variablesmatching("$(this.namespace):$(this.bundle)\..*", "yum_repos_d");
+#
+#       # Now we merge them all together into a single data var
+#       "data" data => parsejson('[]');
+#       "data" data => mergedata(data, $(repo_defs));
+# }
+# ```
+# Example Usage:
+# ```cf3
+# bundle agent main
+# {
+#   methods:
+#     "yum_repo_definitions"
+#       usebundle => example_yum_repos_definition;
+#
+#     # Note how the data is passed
+#     "yum_repos_d"
+#       usebundle => yum_repos_d("purge", @(example_yum_repos_definition.data));
+# }
+# ```
+# Files will be created in /etc/yum.repos.d/ named for the value of id.repo.
 {
+  meta:
+    "version" string => "2.0.0";
+
   vars:
+    # The directory where repository definitions should be rendered (one file
+    # per definition).
     "yum_repos_d" string => "/etc/yum.repos.d";
-    # The data interface bundle could provide data that was read from json, or
-    # that is defined in a classic cfengine array. Json data does not
-    # dereference cfengine variables, so to support that use case we
-    # reconstruct a classic array here.
 
-    # First get a list of the repositories
-    "repo_ids" slist => getindices("$(data_interface_bundle).data[$(this.bundle)]");
+    # Get a list of the defined repositories
+    "repo_ids" slist => getindices(data);
 
-    "keys[$(repo_ids)]"
-      slist => getindices("$(data_interface_bundle).data[$(this.bundle)][$(repo_ids)]");
-
-    "data[$(repo_ids)][$(keys[$(repo_ids)])]"
-      string => "$($(data_interface_bundle).data[$(this.bundle)][$(repo_ids)][$(keys[$(repo_ids)])])",
-      ifvarclass => "have_$(repo_ids)_$(keys[$(repo_ids)])";
+    # Create one data container for each repository id (repository ids are
+    # expected to be valid class names, perhaps we sould canonify them)
+    "data_$(repo_ids)"
+      data => mergedata("data[$(repo_ids)]");
 
     "requested_repo_files" slist => maplist("$(this).repo", @(repo_ids));
 
-  classes:
-      "have_$(repo_ids)_$(keys[$(repo_ids)])"
-        expression => isvariable("$(data_interface_bundle).data[$(this.bundle)][$(repo_ids)][$(keys[$(repo_ids)])]");
+    # These variables are only useful when requesting DEBUG output
+    DEBUG|DEBUG_yum_repos_d::
+      "s_data_$(repo_ids)" string => format("%S", "data_$(repo_ids)");
+      "repo_ids_count" int => length("repo_ids");
 
+  classes:
       "purge_extra_repo_files" expression => strcmp("purge", "$(extra_repo_files_state)");
       "keep_extra_repo_files" expression => strcmp("keep", "$(extra_repo_files_state)");
       "extra_repo_files_state_invalid_option"
         expression => "!(purge_extra_repo_files|keep_extra_repo_files)";
 
+      "_have_var_data_$(repo_ids)[id][value]" expression => isvariable("data_$(repo_ids)[id][value]");
+
   files:
-      "$(yum_repos_d)/$(repo_ids).repo"
-        create => "true",
-        edit_line => manage_yum_sections("$(this.bundle).data", "$(repo_ids)"),
-        edit_defaults => empty;
+    "$(yum_repos_d)/$(data_$(repo_ids)[id][value]).repo"
+      create => "true",
+      edit_template => "$(this.promise_dirname)/../templates/yum.repo.mustache",
+      template_method => "mustache",
+      edit_defaults => empty,
+      perms => mog("0644", "root", "root"),
+      ifvarclass => canonify("_have_var_data_$(repo_ids)[id][value]"),
+      template_data => mergedata("data_$(repo_ids)");
 
     purge_extra_repo_files::
       "$(yum_repos_d)/.*.repo"
@@ -68,9 +94,10 @@ bundle agent yum_repos_d(extra_repo_files_state, data_interface_bundle)
   reports:
     DEBUG|DEBUG_yum_repos_d::
       "DEBUG $(this.bundle)";
-      "$(const.t)Extra repo files in '$(yum_repos_d)': '$(extra_repo_files_state)'";
-      "$(const.t)Invalid option for 'extra_repo_files_state' valid options are 'purge' or 'keep'. Defaulting to 'keep'"
+      "$(const.t) Total number of repo definitions (this bundle activation): '$(repo_ids_count)'";
+      "$(const.t) Should '$(extra_repo_files_state)' extra repo files in '$(yum_repos_d)'";
+      "$(const.t) requested_repo_file: '$(requested_repo_files)'";
+      "$(const.t) '$(repo_ids)' data: '$(s_data_$(repo_ids))'";
+      "$(const.t) Invalid option for 'extra_repo_files_state' valid options are 'purge' or 'keep'. Defaulting to 'keep'"
         ifvarclass => "extra_repo_files_state_invalid_option";
-      "$(const.t)repo: [$(repo_ids)] $(keys[$(repo_ids)])=$(data[$(repo_ids)][$(keys[$(repo_ids)])])";
-      "$(const.t)requested_repo_file: '$(requested_repo_files)'";
 }
