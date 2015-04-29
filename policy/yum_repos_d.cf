@@ -59,7 +59,18 @@ bundle agent yum_repos_d(extra_repo_files_state, data)
     "data_$(repo_ids)"
       data => mergedata("data[$(repo_ids)]");
 
-    "requested_repo_files" slist => maplist("$(this).repo", @(repo_ids));
+    # Define the file name for each repo, and tag it so that we can get a
+    # consolidated list for later purging
+    "file_$(repo_ids)"
+      string => "$(data[$(repo_ids)][id][value]).repo",
+      meta => { "requested_repo_file" };
+
+    "requested_repo_file_vars"
+      slist => variablesmatching("$(this.namespace):$(this.bundle)\.file_.*", "requested_repo_file");
+
+    # You must first define a list, before you are able to extend a list with itself.
+    "requested_repo_files" slist => { };
+    "requested_repo_files" slist => { @(requested_repo_files), "$(file_$(repo_ids))" };
 
     # These variables are only useful when requesting DEBUG output
     DEBUG|DEBUG_yum_repos_d::
