@@ -44,7 +44,7 @@ bundle agent yum_repos_d(extra_repo_files_state, data)
 # Files will be created in /etc/yum.repos.d/ named for the value of id.repo.
 {
   meta:
-    "version" string => "2.0.0";
+    "version" string => "2.0.2";
 
   vars:
     # The directory where repository definitions should be rendered (one file
@@ -61,16 +61,15 @@ bundle agent yum_repos_d(extra_repo_files_state, data)
 
     # Define the file name for each repo, and tag it so that we can get a
     # consolidated list for later purging
-    "file_$(repo_ids)"
-      string => "$(data[$(repo_ids)][id][value]).repo",
-      meta => { "requested_repo_file" };
+    "repo_file[$(repo_ids)]"
+      string => "$(data[$(repo_ids)][id][value]).repo";
 
     "requested_repo_file_vars"
       slist => variablesmatching("$(this.namespace):$(this.bundle)\.file_.*", "requested_repo_file");
 
     # You must first define a list, before you are able to extend a list with itself.
     "requested_repo_files" slist => { };
-    "requested_repo_files" slist => { @(requested_repo_files), "$(file_$(repo_ids))" };
+    "requested_repo_files" slist => getvalues(repo_file);
 
     # These variables are only useful when requesting DEBUG output
     DEBUG|DEBUG_yum_repos_d::
