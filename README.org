@@ -16,17 +16,17 @@ Enabled by setting the class `enable_yum_repos_d`
     methods:
       # It's best practice to converge your data first
       "yum_repository_definitions" usebundle => yum_repository_definitions;
-  
+
       # Note how the data is passed
       "repos" usebundle => yum_repos_d("purge", @(yum_repository_definitions.data));
   }
-  
+
   bundle agent yum_repository_definitions
   # @brieg Define yum repository configurations
   {
-  
+
     vars:
-  
+
         "os_ver"
           string => string_head(
                                 execresult("/bin/rpm -q --queryformat '%{RELEASE}' redhat-release-server", "noshell"),
@@ -35,11 +35,11 @@ Enabled by setting the class `enable_yum_repos_d`
                       if the redhat-release-server package version is 6.5.0.1,
                       return '6.5'.  Purpose: so that we can extract the minor
                       version number, which we assume to be one digit.";
-  
+
         "os_ver_2" string => string_tail("$(os_ver)", 1);
-  
+
         "kickstart" string => ifelse("lab", "http://lab-kickstart", "http://default-kickstart");
-  
+
       redhat_5.!oracle_5::
         "RHEL5_iso"
           meta => { "yum_repos_d" },
@@ -52,7 +52,7 @@ Enabled by setting the class `enable_yum_repos_d`
                       "gpgkey":   { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
                     }
                   }');
-  
+
       redhat_5|oracle_5::
         "RHEL5_CUSTOM"
           meta => { "yum_repos_d" },
@@ -65,7 +65,7 @@ Enabled by setting the class `enable_yum_repos_d`
                       "gpgkey":   { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
                     }
                   }');
-  
+
       oracle_5::
         "OEL5_ISO_SRV"
           meta => { "yum_repos_d" },
@@ -78,7 +78,7 @@ Enabled by setting the class `enable_yum_repos_d`
                       "gpgkey":   { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
                     }
                   }');
-  
+
       redhat_6|oracle_6::
         "RHEL6_ISO"
           meta => { "yum_repos_d" },
@@ -91,7 +91,7 @@ Enabled by setting the class `enable_yum_repos_d`
                       "gpgkey":   { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
                     }
                   }');
-  
+
       lab.redhat_6.!oracle_6::
         "VMWARE_TOOL_OSP"
           meta => { "yum_repos_d" },
@@ -104,23 +104,23 @@ Enabled by setting the class `enable_yum_repos_d`
                       "gpgkey":   { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
                     }
                   }');
-  
+
       # It is important to return to the *any* class restriction so that we
       # always try to consolidate the defined repos
       any::
         # Find all of the repo definitions (variables in this bundle tagged with "yum_repos_d")
         "repo_defs" slist => variablesmatching("$(this.namespace):$(this.bundle)\..*", "yum_repos_d");
-  
+
         # Now we merge them all together into a single data var
         "data" data => parsejson('[]');
         "data" data => mergedata(data, $(repo_defs));
-  
+
        # These variables are only useful when debugging
        DEBUG|DEBUG_yum_repository_definitions::
          "s_data" string => format("%S", data);
          "repo_ids" slist => getindices(data);
          "repo_def_count" int => length(repo_ids);
-  
+
      reports:
        DEBUG|DEBUG_yum_repository_definitions::
          "DEBUG $(this.bundle) YES THIS ONE";
@@ -182,43 +182,35 @@ First get the policy into your masterfiles
 #+beign_src sh
   cd /tmp
   export MASTERFILES=/home/nickanderson/CFEngine/masterfiles
-  git clone https://github.com/nickanderson/yum.git
+  git clone https://github.com/nickanderson/cfengine-yum.git
   cd yum
-  mkdir -p $MASTERFILES/services/yum
+  mkdir -p $MASTERFILES/services/cfengine-yum
   git archive master | tar -x -C $MASTERFILES/services/yum
 #+end_src
 
-Include def.cf into your inputs
+*** For CFEngine Masterfiles Policy Framework 3.7.x
+Include def.cf in the augments_file (def.json)
 
-#+begin_src cfengine
-  body common control
+
+#+begin_src json
+{
+    "inputs": [ "services/yum/def.cf" ]
+}
+#+end_src
+
+To activate the yum inventory policy you can simply include the policy into your
+inputs and define the =services_autorun= class.
+
+#+BEGIN_SRC json
   {
-        inputs => { 
-                    # Reports
-                    @(cfengine_reports.inputs),
-  
-                   "services/yum/def.cf",
-                    
-                    # autorun system
-                    @(services_autorun.inputs),
-        };
+      "inputs": [
+          "services/cfengine-yum/def.cf"
+      ],
+      "classes": {
+          "services_autorun": [ "any" ]
+      }
   }
-#+end_src
+#+END_SRC
 
-Ensure the features you want are enabled, (this should be done in a
-file that is included in inputs BEFORE the yum policy, for example
-def.cf) and that the policy will be activated. Note: if the feature is
-not enabled, it will not be included in inputs, and will be
-unavailable for use.
-
-#+begin_src cfengine
-  classes:
-    "enable_yum_inventory"
-      expression => "any",
-      comment => "Enable yum inventory reporting";
-
-    "enable_yum_repos_d"
-      expression => "any",
-      comment => "Enable policy to manage yum repository client configs
-                  in /etc/yum.repos.d";
-#+end_src
+See the examples like [[file:examples/distro_mirrors.cf][distro_mirrors]] that show how to manage your client
+repository configurations.

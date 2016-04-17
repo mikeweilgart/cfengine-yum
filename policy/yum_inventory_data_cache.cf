@@ -79,4 +79,20 @@ bundle agent yum_inventory_data_cache
       "$(paths.yum)"
         args => "repolist enabled > $(yum_repolist_enabled_state_file)",
         contain => in_shell;
+
+  reports:
+    "DEBUG|DEBUG_$(this.bundle)"::
+      "DEBUG $(this.bundle): yum repolist enabled cache invalid"
+        if => "yum_repolist_enabled_cache_invalid";
+
+      "DEBUG $(this.bundle): $(paths.yum) repolist enabled > $(yum_repolist_enabled_state_file)"
+        if => "yum_repolist_enabled_cache_invalid";
+
+
+      "DEBUG $(this.bundle): yum info yum cache invalid"
+        if => "yum_info_yum_cache_invalid";
+
+      "DEBUG $(this.bundle): $(paths.yum) info yum > $(yum_info_state_file)"
+        if => "yum_info_yum_cache_invalid";
+
 }

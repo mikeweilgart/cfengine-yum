@@ -1,0 +1,118 @@
+bundle common public_distro_repo_definitions
+{
+  meta:
+    "description"
+      string => "This bundle leverages
+		 https://github.com/nickanderson/cfengine-yum to toggle back
+                 and forth between the repository vault (so that old vulnerable packages can be
+		 installed) and a mirror containing the most recent packages
+                 (for remediation).";
+
+  classes:
+      "_$(this.bundle)_supported_platform"
+         or => { @(supported_platforms) },
+         comment => "This class tells us if this bundle is currently running on
+                     a supported platform.";
+
+  vars:
+
+      "supported_platforms"
+        slist => { "centos_6_5", "centos_5_9" };
+
+      "supported_platforms_s"
+        string => join(", ", @(supported_platforms) ),
+        comment => "We prepare a string version of the supported platforms for
+                    friendlier reporting.";
+
+    "$(this.bundle)_use_version_specific.centos_6_5"::
+      "centos"
+        meta => { "yum_repos_d" },
+        data => parsejson('{
+                  "centos_6_5_vault": {
+                    "id": { "value": "centos_6_5_vault"},
+                    "name": { "value": "centos_6_5_vault"},
+                    "baseurl": { "value": "http://vault.centos.org/6.5/os/$(sys.arch)"},
+                    "gpgcheck": { "value": "0"},
+                    "gpgkey": { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                  }
+                }');
+
+    "$(this.bundle)_use_latest.centos_6"::
+
+      "centos6"
+        meta => { "yum_repos_d" },
+        data => parsejson('{
+                  "centos6_updates": {
+                    "id": { "value": "centos6_updates"},
+                    "name": { "value": "centos6_updates"},
+                    "baseurl": { "value": "http://mirror.rackspace.com/CentOS/6/updates/$(sys.arch)"},
+                    "gpgcheck": { "value": "0"},
+                    "gpgkey": { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                  }
+                  "centos6_os": {
+                    "id": { "value": "centos6_os"},
+                    "name": { "value": "centos6_os"},
+                    "baseurl": { "value": "http://mirror.rackspace.com/CentOS/6/os/$(sys.arch)"},
+                    "gpgcheck": { "value": "0"},
+                    "gpgkey": { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                  }
+                }');
+
+    "$(this.bundle)_use_version_specific.centos_5_9"::
+      "centos5_9"
+        meta => { "yum_repos_d" },
+        data => parsejson('{
+                  "centos_5_9_vault": {
+                    "id": { "value": "centos_5_9_vault"},
+                    "name": { "value": "centos_5_9_vault"},
+                    "baseurl": { "value": "http://vault.centos.org/5.9/os/$(sys.arch)"},
+                    "gpgcheck": { "value": "0"},
+                    "gpgkey": { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                  }
+                }');
+
+    "$(this.bundle)_use_latest.centos_5"::
+      "centos5"
+        meta => { "yum_repos_d" },
+        data => parsejson('{
+                  "centos5_updates": {
+                    "id": { "value": "centos5_updates"},
+                    "name": { "value": "centos5_updates"},
+                    "baseurl": { "value": "http://mirror.rackspace.com/CentOS/5/updates/$(sys.arch)"},
+                    "gpgcheck": { "value": "0"},
+                    "gpgkey": { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                  }
+                  "centos5_os": {
+                    "id": { "value": "centos5_os"},
+                    "name": { "value": "centos5_os"},
+                    "baseurl": { "value": "http://mirror.rackspace.com/CentOS/5/os/$(sys.arch)"},
+                    "gpgcheck": { "value": "0"},
+                    "gpgkey": { "value": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release" }
+                  }
+                }');
+
+
+    any::
+
+      # Find all of the repo definitions (variables in this bundle
+      # tagged with "yum_repos_d")
+
+      "repo_defs"
+        slist => variablesmatching("$(this.namespace):$(this.bundle)\..*", "yum_repos_d");
+      "i" slist => getindices(repo_defs);
+
+      # Now we merge them all together into a single data var
+      "data" data => parsejson('[]');
+      "data" data => mergedata(data, $(repo_defs));
+
+  reports:
+
+      "!_$(this.bundle)_supported_platform"::
+
+        "Sorry $(this.bundle) defined in $(this.promise_filename) does not currently support your platform.
+Please consider adding support";
+
+    "DEBUG|DEBUG_$(this.bundle)"::
+      "DEBUG $(this.bundle: $(i))";
+
+}
