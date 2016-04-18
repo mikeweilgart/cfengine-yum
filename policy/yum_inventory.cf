@@ -1,4 +1,4 @@
-bundle agent yum_inventory_file_control
+bundle common yum_inventory_file_control
 {
   vars:
 
